@@ -30,10 +30,11 @@ This is a modern, interactive web-based chat application powered by DeepSeek-Cod
    ```
 
 2. Install Ollama:
-   - Visit [Ollama.ai](https://ollama.ai/) and follow installation instructions
-   - Pull DeepSeek Coder model:
+   - Visit [Ollama.ai](https://ollama.ai/) and follow the installation instructions.
+   - Pull DeepSeek Coder models:
      ```bash
      ollama pull deepseek-coder
+     ollama pull deepseek-r1:7b
      ```
 
 3. Start the Ollama server:
@@ -41,11 +42,23 @@ This is a modern, interactive web-based chat application powered by DeepSeek-Cod
    ollama serve
    ```
 
-## Running the Application
+## Running the Application Locally
 
-1. Open `index.html` in your web browser
-2. Ensure Ollama server is running
-3. Select your preferred model from the dropdown
+1. Start a simple HTTP server using Python:
+   ```bash
+   python -m http.server 8000
+   ```
+   or for Python 3:
+   ```bash
+   python3 -m http.server 8000
+   ```
+
+2. Open your web browser and navigate to:
+   ```
+   http://localhost:8000/index.html
+   ```
+
+3. Ensure the Ollama server is running and select your preferred model from the dropdown.
 
 ## User Interface
 
@@ -107,7 +120,7 @@ Edit `styles.css` to customize:
 
 ## Contact
 
-- Project Maintainer: Hamit Can FINDIK
+- Project Maintainer: Hamit Can Fındık
 - Email: [hamitfindik2@gmail.com]
 - Project Link: [https://github.com/hamitcf1/deepseek-coder-chat](https://github.com/hamitcf1/deepseek-coder-chat)
 
