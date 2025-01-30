@@ -4,7 +4,6 @@
 
 This is a modern, interactive web-based chat application powered by DeepSeek-Coder, designed to provide an intuitive interface for AI-assisted coding and conversation.
 
-![Application Screenshot](screenshot.png)
 
 ## Features
 
@@ -26,7 +25,7 @@ This is a modern, interactive web-based chat application powered by DeepSeek-Cod
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/deepseek-coder-chat.git
+   git clone https://github.com/hamitcf1/deepseek-coder-chat.git
    cd deepseek-coder-chat
    ```
 
@@ -108,9 +107,9 @@ Edit `styles.css` to customize:
 
 ## Contact
 
-- Project Maintainer: [Your Name]
-- Email: [your.email@example.com]
-- Project Link: [https://github.com/yourusername/deepseek-coder-chat](https://github.com/yourusername/deepseek-coder-chat)
+- Project Maintainer: [Hamit Can FINDIK]
+- Email: [hamitfindik2@gmail.com  ]
+- Project Link: [https://github.com/hamitcf1/deepseek-coder-chat](https://github.com/hamitcf1/deepseek-coder-chat)
 
 ---
 
