@@ -107,8 +107,8 @@ Edit `styles.css` to customize:
 
 ## Contact
 
-- Project Maintainer: [Hamit Can FINDIK]
-- Email: [hamitfindik2@gmail.com  ]
+- Project Maintainer: Hamit Can FINDIK
+- Email: [hamitfindik2@gmail.com]
 - Project Link: [https://github.com/hamitcf1/deepseek-coder-chat](https://github.com/hamitcf1/deepseek-coder-chat)
 
 ---
