@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeepSeek-Coder Chat</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <button id="new-chat-btn" class="new-chat-btn">New Chat</button>
+                <div class="chat-actions">
+                    <button id="export-chats" class="action-btn" title="Export Chats">📤 Export</button>
+                    <button id="import-chats" class="action-btn" title="Import Chats">📥 Import</button>
+                    <input type="file" id="import-file" accept=".json" style="display: none;">
+                </div>
+            </div>
+            <div class="chat-list" id="chat-list">
+                <!-- Chat history items will be inserted here -->
+            </div>
+            <div class="server-controls">
+                <div class="model-selector">
+                    <select id="model-select" class="model-select">
+                        <option value="deepseek-coder">DeepSeek Coder</option>
+                        <option value="deepseek-r1:7b">DeepSeek R1 7B (Coming Soon)</option>
+                    </select>
+                </div>
+                <button id="restart-server" class="server-btn">Restart Server</button>
+                <div class="model-status">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Checking model status...</span>
+                </div>
+            </div>
+        </aside>
+        <div class="sidebar-resize-handle"></div>
+        
+        <div class="main-content">
+            <header>
+                <div class="header-left">
+                    <button id="toggle-sidebar" class="toggle-btn">☰</button>
+                    <h1>DeepSeek-Coder Chat</h1>
+                </div>
+                <div class="chat-controls">
+                    <button id="toggle-terminal" class="toggle-btn">🖥️ Terminal</button>
+                    <button id="theme-toggle" class="theme-btn">🌙</button>
+                    <button id="clear-chat" class="clear-btn">Clear Chat</button>
+                </div>
+            </header>
+            
+            <div class="content-container">
+                <main>
+                    <div class="chat-container">
+                        <div class="messages" id="messages">
+                            <!-- Messages will be inserted here -->
+                        </div>
+                        
+                        <div class="input-area">
+                            <textarea 
+                                id="prompt-input" 
+                                placeholder="Enter your prompt here..."
+                                rows="3"
+                            ></textarea>
+                            <button id="send-button">Send</button>
+                        </div>
+                    </div>
+                </main>
+                
+                <div class="terminal-resize-handle"></div>
+                <div class="terminal" id="terminal">
+                    <div class="terminal-header">
+                        <span>Terminal Output</span>
+                        <button id="clear-terminal" class="clear-btn">Clear</button>
+                    </div>
+                    <div class="terminal-content" id="terminal-content">
+                        <!-- Terminal output will be inserted here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="script.js" defer></script>
+</body>
+</html>
