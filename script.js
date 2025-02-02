@@ -27,6 +27,9 @@ class OllamaChat {
         this.terminalResizeHandle = document.querySelector('.terminal-resize-handle');
         this.sidebar = document.querySelector('.sidebar');
         this.mainContent = document.querySelector('.main-content');
+        this.getInTouchBtn = document.getElementById('get-in-touch');
+        this.socialPopup = document.getElementById('social-popup');
+        this.closePopupBtn = document.querySelector('.close-popup');
 
         // Initialize state
         this.chats = {};
@@ -105,6 +108,13 @@ class OllamaChat {
                 this.contentContainer.style.height = `calc(100vh - ${savedTerminalHeight + 80}px)`;
             }
         }
+
+        // Initialize model selection
+        const lastSelectedModel = localStorage.getItem('last-selected-model');
+        if (lastSelectedModel && this.modelSelect) {
+            this.modelSelect.value = lastSelectedModel;
+            this.currentModel = lastSelectedModel;
+        }
     }
 
     setupEventListeners() {
@@ -161,9 +171,9 @@ class OllamaChat {
         // Model selection
         this.modelSelect?.addEventListener('change', async (event) => {
             const selectedModel = event.target.value;
+            this.currentModel = selectedModel;
             this.log(`Checking availability for model: ${selectedModel}`, 'info');
             await this.checkModelAvailability();
-            this.updateModelStatus(this.serverAvailable);
         });
 
         // Theme toggle
@@ -213,6 +223,74 @@ class OllamaChat {
                 
             } catch (error) {
                 this.log('Failed to restart server: ' + error.message, 'error');
+            }
+        });
+
+        // Export and Import chats
+        this.exportChatsBtn?.addEventListener('click', () => {
+            const chatsData = JSON.stringify(this.chats, null, 2);
+            const blob = new Blob([chatsData], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `ollama-chats-${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+
+        this.importChatsBtn?.addEventListener('click', () => {
+            this.importFileInput?.click();
+        });
+
+        this.importFileInput?.addEventListener('change', (event) => {
+            const file = event.target.files?.[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const importedChats = JSON.parse(e.target?.result);
+                        this.chats = { ...this.chats, ...importedChats };
+                        this.saveChats();
+                        this.renderChatList();
+                        this.log('Chats imported successfully', 'success');
+                    } catch (error) {
+                        this.log('Error importing chats: Invalid file format', 'error');
+                    }
+                };
+                reader.readAsText(file);
+            }
+            // Reset the input so the same file can be imported again
+            event.target.value = '';
+        });
+
+        // Get in touch popup
+        this.getInTouchBtn?.addEventListener('click', () => {
+            this.socialPopup?.classList.add('active');
+            // Prevent scrolling of the background
+            document.body.style.overflow = 'hidden';
+        });
+
+        const closePopup = () => {
+            this.socialPopup?.classList.remove('active');
+            // Re-enable scrolling
+            document.body.style.overflow = '';
+        };
+
+        this.closePopupBtn?.addEventListener('click', closePopup);
+
+        // Close popup when clicking outside
+        this.socialPopup?.addEventListener('click', (e) => {
+            if (e.target === this.socialPopup) {
+                closePopup();
+            }
+        });
+
+        // Close popup with Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && this.socialPopup?.classList.contains('active')) {
+                closePopup();
             }
         });
 
@@ -267,12 +345,13 @@ class OllamaChat {
             
             const data = await response.json();
             const availableModelNames = data.models.map(m => m.name);
-            const isCurrentModelAvailable = availableModelNames.includes(this.currentModel);
+            const selectedModel = this.modelSelect?.value || this.currentModel;
+            const isModelAvailable = availableModelNames.includes(selectedModel);
 
-            this.updateModelStatus(isCurrentModelAvailable);
-            this.log(`Model ${this.currentModel} is ${isCurrentModelAvailable ? 'available' : 'not available'}.`, isCurrentModelAvailable ? 'success' : 'error');
+            this.updateModelStatus(isModelAvailable);
+            this.log(`Model ${selectedModel} is ${isModelAvailable ? 'available' : 'not available'}.`, isModelAvailable ? 'success' : 'error');
 
-            return isCurrentModelAvailable;
+            return isModelAvailable;
         } catch (error) {
             this.updateModelStatus(false);
             this.log('Failed to check model availability: ' + error.message, 'error');
@@ -361,33 +440,21 @@ class OllamaChat {
         localStorage.setItem('last-active-chat', chatId);
         
         // Update model selector to match chat's model
-        if (this.modelSelect && this.chats[chatId].model) {
-            this.modelSelect.value = this.chats[chatId].model;
-            this.currentModel = this.chats[chatId].model;
+        const chatModel = this.chats[chatId].model;
+        if (this.modelSelect && chatModel) {
+            this.modelSelect.value = chatModel;
+            this.currentModel = chatModel;
+            // Save the current model to localStorage
+            localStorage.setItem('last-selected-model', chatModel);
         }
         
         this.renderCurrentChat();
         this.renderChatList();
     }
-    // Old way of creating a new chat without model selection
-    /*createNewChat() {
-        const chatId = Date.now().toString();
-        this.chats[chatId] = {
-            id: chatId,
-            title: 'New Chat',
-            model: this.currentModel,
-            created: Date.now(),
-            messages: []
-        };
-        this.currentChatId = chatId;
-        this.renderChatList();
-        this.saveChats();
-    }
-    */
 
     createNewChat() {
         const chatId = Date.now().toString();
-        const currentModel = this.modelSelect.value; // assuming modelSelect is the dropdown/select element for models
+        const currentModel = this.modelSelect.value;
         this.chats[chatId] = {
             id: chatId,
             title: 'New Chat',
@@ -396,8 +463,13 @@ class OllamaChat {
             messages: []
         };
         this.currentChatId = chatId;
+        this.currentModel = currentModel;
+        // Save the current model to localStorage
+        localStorage.setItem('last-selected-model', currentModel);
         this.renderChatList();
         this.saveChats();
+        // Ensure UI reflects the correct model
+        this.modelSelect.value = currentModel;
     }
 
     addMessage(content, isUser = false, isError = false) {
@@ -628,7 +700,6 @@ class OllamaChat {
             chatItem.className = 'chat-item';
             chatItem.setAttribute('data-chat-id', chatId);
             
-            // Show model information in chat title
             const titleText = chat.title || 'Untitled Chat';
             const modelInfo = chat.model || 'Unknown Model';
             const createdDate = chat.created ? new Date(chat.created).toLocaleString() : 'Unknown Date';
@@ -637,16 +708,27 @@ class OllamaChat {
                 <div class="chat-title">${titleText}</div>
                 <div class="chat-model-info">🤖 ${modelInfo}</div>
                 <div class="chat-timestamp">${createdDate}</div>
-                <button class="delete-chat-btn">🗑️</button>
+                <button class="delete-chat-btn" title="Delete Chat">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 6h18"></path>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path>
+                        <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
+                </button>
             `;
 
-            chatItem.querySelector('.delete-chat-btn')?.addEventListener('click', () => {
+            chatItem.querySelector('.delete-chat-btn')?.addEventListener('click', (e) => {
+                e.stopPropagation();
                 this.deleteChat(chatId);
             });
 
             chatItem.addEventListener('click', () => {
                 this.switchToChat(chatId);
             });
+
+            if (chatId === this.currentChatId) {
+                chatItem.classList.add('active');
+            }
 
             this.chatList.appendChild(chatItem);
         });
@@ -674,9 +756,41 @@ class OllamaChat {
     log(message, level = 'info') {
         if (!this.terminalContent) return;
 
+        const timestamp = new Date().toLocaleTimeString('tr-TR', { 
+            hour: '2-digit', 
+            minute: '2-digit', 
+            second: '2-digit',
+            fractionalSecondDigits: 3 
+        });
+
+        const icons = {
+            info: 'ℹ️',
+            error: '❌',
+            success: '✅',
+            warning: '⚠️'
+        };
+
         const messageDiv = document.createElement('div');
         messageDiv.className = `log-${level}`;
-        messageDiv.textContent = `${new Date().toLocaleTimeString()} - ${message}`;
+        
+        // Create a timestamp span
+        const timestampSpan = document.createElement('span');
+        timestampSpan.className = 'log-timestamp';
+        timestampSpan.textContent = `[${timestamp}]`;
+        
+        // Create an icon span
+        const iconSpan = document.createElement('span');
+        iconSpan.className = 'log-icon';
+        iconSpan.textContent = ` ${icons[level] || icons.info} `;
+        
+        // Create a message span
+        const messageSpan = document.createElement('span');
+        messageSpan.className = 'log-message';
+        messageSpan.textContent = message;
+        
+        messageDiv.appendChild(timestampSpan);
+        messageDiv.appendChild(iconSpan);
+        messageDiv.appendChild(messageSpan);
 
         this.terminalContent.appendChild(messageDiv);
         this.terminalContent.scrollTop = this.terminalContent.scrollHeight;
