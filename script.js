@@ -13,7 +13,7 @@ class OllamaChat {
         this.terminal = document.getElementById('terminal');
         this.terminalContent = document.getElementById('terminal-content');
         this.toggleTerminalBtn = document.getElementById('toggle-terminal');
-        this.toggleThinkingBtn = document.getElementById('toggle-thinking');
+        //this.toggleThinkingBtn = document.getElementById('toggle-thinking');
         this.toggleSidebarBtn = document.getElementById('toggle-sidebar');
         this.clearTerminalBtn = document.getElementById('clear-terminal');
         this.exportChatsBtn = document.getElementById('export-chats');
@@ -46,11 +46,13 @@ class OllamaChat {
         }
 
         // Initialize thinking process toggle
+        /*
         if (this.toggleThinkingBtn) {
             this.toggleThinkingBtn.classList.toggle('active', this.showThinking);
             this.toggleThinkingBtn.setAttribute('aria-pressed', this.showThinking);
             this.toggleThinkingBtn.title = this.showThinking ? 'Hide Thinking Process' : 'Show Thinking Process';
         }
+        */
 
         // Initialize model selector
         if (this.modelSelect) {
@@ -130,9 +132,11 @@ class OllamaChat {
         });
 
         // Thinking toggle
+        /*
         this.toggleThinkingBtn?.addEventListener('click', () => {
             this.toggleThinkingProcess();
         });
+        */
 
         // Clear chat
         this.clearChatBtn?.addEventListener('click', () => {
@@ -279,7 +283,8 @@ class OllamaChat {
     getModelDisplayName(modelValue) {
         const modelMap = {
             'deepseek-r1:7b': 'DeepSeek R1 7B',
-            'deepseek-coder': 'DeepSeek Coder'
+            'deepseek-coder': 'DeepSeek Coder',
+            'deepseek-r1:8b': 'DeepSeek R1 8B'
         };
         return modelMap[modelValue] || modelValue;
     }
@@ -364,13 +369,29 @@ class OllamaChat {
         this.renderCurrentChat();
         this.renderChatList();
     }
-
-    createNewChat() {
+    // Old way of creating a new chat without model selection
+    /*createNewChat() {
         const chatId = Date.now().toString();
         this.chats[chatId] = {
             id: chatId,
             title: 'New Chat',
             model: this.currentModel,
+            created: Date.now(),
+            messages: []
+        };
+        this.currentChatId = chatId;
+        this.renderChatList();
+        this.saveChats();
+    }
+    */
+
+    createNewChat() {
+        const chatId = Date.now().toString();
+        const currentModel = this.modelSelect.value; // assuming modelSelect is the dropdown/select element for models
+        this.chats[chatId] = {
+            id: chatId,
+            title: 'New Chat',
+            model: currentModel,
             created: Date.now(),
             messages: []
         };
