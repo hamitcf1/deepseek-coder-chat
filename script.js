@@ -1,5 +1,6 @@
 class OllamaChat {
     constructor() {
+        // Initialize UI elements
         this.messages = document.getElementById('messages');
         this.promptInput = document.getElementById('prompt-input');
         this.sendButton = document.getElementById('send-button');
@@ -12,6 +13,7 @@ class OllamaChat {
         this.terminal = document.getElementById('terminal');
         this.terminalContent = document.getElementById('terminal-content');
         this.toggleTerminalBtn = document.getElementById('toggle-terminal');
+        this.toggleThinkingBtn = document.getElementById('toggle-thinking');
         this.toggleSidebarBtn = document.getElementById('toggle-sidebar');
         this.clearTerminalBtn = document.getElementById('clear-terminal');
         this.exportChatsBtn = document.getElementById('export-chats');
@@ -25,350 +27,342 @@ class OllamaChat {
         this.terminalResizeHandle = document.querySelector('.terminal-resize-handle');
         this.sidebar = document.querySelector('.sidebar');
         this.mainContent = document.querySelector('.main-content');
-        
+
+        // Initialize state
+        this.chats = {};
         this.currentChatId = null;
-        this.chats = this.loadChats();
-        this.currentModel = localStorage.getItem('selectedModel') || 'deepseek-coder';
+        this.currentModel = localStorage.getItem('selectedModel') || 'deepseek-r1:7b';
+        this.currentRequest = null;
+        this.maxMessages = 100;
+        this.isProcessing = false;
+        this.serverAvailable = false;
+        this.showThinking = localStorage.getItem('showThinking') === 'true';
+
+        // Initialize theme
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+        if (this.themeToggleBtn) {
+            this.themeToggleBtn.textContent = savedTheme === 'light' ? '🌙' : '☀️';
+        }
+
+        // Initialize thinking process toggle
+        if (this.toggleThinkingBtn) {
+            this.toggleThinkingBtn.classList.toggle('active', this.showThinking);
+            this.toggleThinkingBtn.setAttribute('aria-pressed', this.showThinking);
+            this.toggleThinkingBtn.title = this.showThinking ? 'Hide Thinking Process' : 'Show Thinking Process';
+        }
+
+        // Initialize model selector
+        if (this.modelSelect) {
+            this.modelSelect.value = this.currentModel;
+        }
+
+        // Load saved chats
+        this.loadChats();
         
+        // Initialize UI state
+        this.initializeUIState();
+        
+        // Set up event listeners
+        this.setupEventListeners();
+        
+        // Check server and model availability
+        this.checkServerAvailability();
+    }
+
+    initializeUIState() {
+        // Initialize sidebar state from localStorage
+        const sidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+        if (sidebarCollapsed) {
+            this.sidebar?.classList.add('collapsed');
+            this.mainContent?.classList.add('expanded');
+            this.toggleSidebarBtn?.setAttribute('aria-pressed', 'true');
+            this.toggleSidebarBtn.title = 'Show Sidebar';
+        }
+
         // Initialize terminal visibility
         const terminalVisible = localStorage.getItem('terminalVisible') === 'true';
         if (terminalVisible) {
             this.showTerminal();
+        } else {
+            this.hideTerminal();
         }
-        
-        // Initialize sidebar visibility
-        const sidebarVisible = localStorage.getItem('sidebarVisible') !== 'false';
-        if (!sidebarVisible) {
-            this.appContainer.classList.add('sidebar-hidden');
-        }
-        
+
         // Load saved dimensions
         const savedSidebarWidth = localStorage.getItem('sidebarWidth');
         const savedTerminalHeight = localStorage.getItem('terminalHeight');
-        
-        if (savedSidebarWidth) {
+
+        if (savedSidebarWidth && this.sidebar) {
             this.sidebar.style.width = savedSidebarWidth + 'px';
-            this.sidebarResizeHandle.style.left = savedSidebarWidth + 'px';
+            this.mainContent.style.marginLeft = savedSidebarWidth + 'px';
         }
-        
+
         if (savedTerminalHeight && this.terminal) {
             this.terminal.style.height = savedTerminalHeight + 'px';
-            this.terminalResizeHandle.style.bottom = savedTerminalHeight + 'px';
             if (this.contentContainer) {
                 this.contentContainer.style.height = `calc(100vh - ${savedTerminalHeight + 80}px)`;
             }
         }
-        
-        this.init();
     }
 
-    init() {
-        this.checkModelStatus();
-        this.addEventListeners();
-        this.initResizeHandlers();
-        this.renderChatList();
-        this.initializeTheme();
-        this.initializeModel();
-        
-        if (Object.keys(this.chats).length === 0) {
-            this.createNewChat();
-        } else {
-            const lastChatId = localStorage.getItem('lastActiveChatId');
-            if (lastChatId && this.chats[lastChatId]) {
-                this.loadChat(lastChatId);
-            } else {
-                this.loadChat(Object.keys(this.chats)[0]);
-            }
-        }
-
-        // Restore terminal visibility
-        const terminalVisible = localStorage.getItem('terminalVisible') === 'true';
-        if (terminalVisible) {
-            this.showTerminal();
-        }
-    }
-
-    initializeTheme() {
-        const theme = localStorage.getItem('theme') || 'light';
-        document.documentElement.setAttribute('data-theme', theme);
-        this.themeToggleBtn.textContent = theme === 'light' ? '🌙' : '☀️';
-    }
-
-    initializeModel() {
-        this.modelSelect.value = this.currentModel;
-        // Disable R1 model option for now
-        const r1Option = this.modelSelect.querySelector('option[value="deepseek-r1:7b"]');
-        if (r1Option) {
-            r1Option.disabled = true;
-        }
-    }
-
-    toggleTheme() {
-        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-        document.documentElement.setAttribute('data-theme', isDark ? 'light' : 'dark');
-        this.themeToggleBtn.textContent = isDark ? '🌙' : '☀️';
-        localStorage.setItem('darkMode', !isDark);
-        
-        // Update terminal colors based on theme
-        if (this.terminal) {
-            this.terminal.style.backgroundColor = `var(--terminal-bg)`;
-            this.terminal.style.color = `var(--terminal-text)`;
-        }
-    }
-
-    addEventListeners() {
-        this.sendButton.addEventListener('click', () => this.sendMessage());
-        this.promptInput.addEventListener('keypress', (e) => {
+    setupEventListeners() {
+        // Chat controls
+        this.newChatBtn?.addEventListener('click', () => this.createNewChat());
+        this.clearChatBtn?.addEventListener('click', () => this.clearCurrentChat());
+        this.sendButton?.addEventListener('click', () => this.sendMessage());
+        this.promptInput?.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 this.sendMessage();
             }
         });
-        
-        this.newChatBtn.addEventListener('click', () => this.createNewChat());
-        this.clearChatBtn.addEventListener('click', () => this.clearCurrentChat());
-        this.restartServerBtn.addEventListener('click', () => this.restartServer());
-        this.toggleTerminalBtn.addEventListener('click', () => this.toggleTerminal());
-        this.toggleSidebarBtn.addEventListener('click', () => this.toggleSidebar());
-        this.clearTerminalBtn.addEventListener('click', () => this.clearTerminal());
-        this.exportChatsBtn.addEventListener('click', () => this.exportChats());
-        this.importChatsBtn.addEventListener('click', () => this.importFileInput.click());
-        this.importFileInput.addEventListener('change', (e) => this.importChats(e));
-        this.themeToggleBtn.addEventListener('click', () => this.toggleTheme());
-        this.modelSelect.addEventListener('change', (e) => this.handleModelChange(e));
-    }
 
-    handleModelChange(event) {
-        const newModel = event.target.value;
-        const oldModel = this.currentModel;
-        
-        this.currentModel = newModel;
-        localStorage.setItem('selectedModel', newModel);
-        
-        // Check if the new model is available
-        this.checkModelStatus().then(() => {
-            if (this.currentModel !== newModel) {
-                // checkModelStatus reverted the model change
-                event.target.value = this.currentModel;
-            } else {
-                this.log(`Switched to ${newModel} model`);
+        // Terminal controls
+        this.toggleTerminalBtn?.addEventListener('click', () => {
+            this.terminal?.classList.toggle('visible');
+            this.saveUIState();
+        });
+
+        this.clearTerminalBtn?.addEventListener('click', () => {
+            if (this.terminalContent) {
+                this.terminalContent.innerHTML = '';
             }
+        });
+
+        // Thinking toggle
+        this.toggleThinkingBtn?.addEventListener('click', () => {
+            this.toggleThinkingProcess();
+        });
+
+        // Clear chat
+        this.clearChatBtn?.addEventListener('click', () => {
+            if (this.isProcessing) return;
+            if (this.messages) {
+                this.messages.innerHTML = '';
+            }
+            if (this.currentChatId) {
+                this.chats[this.currentChatId].messages = [];
+                this.saveChats();
+            }
+        });
+
+        // Chat input
+        this.promptInput?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                this.sendMessage();
+            }
+        });
+
+        // Model selection
+        this.modelSelect?.addEventListener('change', async (event) => {
+            const selectedModel = event.target.value;
+            this.log(`Checking availability for model: ${selectedModel}`, 'info');
+            await this.checkModelAvailability();
+            this.updateModelStatus(this.serverAvailable);
+        });
+
+        // Theme toggle
+        this.themeToggleBtn?.addEventListener('click', () => {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            this.themeToggleBtn.textContent = newTheme === 'light' ? '🌙' : '☀️';
+        });
+
+        // Server restart
+        this.restartServerBtn?.addEventListener('click', async () => {
+            try {
+                this.log('Attempting to restart Ollama server...', 'info');
+                
+                // First try to shutdown gracefully
+                try {
+                    const response = await fetch('http://localhost:11434/api/shutdown', {
+                        method: 'POST'
+                    });
+                    if (response.ok) {
+                        this.log('Server shutdown initiated', 'info');
+                    }
+                } catch (error) {
+                    // If server is already down, that's fine
+                    this.log('Server appears to be already down', 'info');
+                }
+
+                // Wait a moment for the process to fully stop
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                // Try to start the server using the command line
+                const startServer = async () => {
+                    try {
+                        await fetch('http://localhost:11434/api/tags');
+                        this.log('Server is back online!', 'success');
+                        await this.checkServerAvailability();
+                    } catch (error) {
+                        this.log('Waiting for server to start...', 'info');
+                        setTimeout(startServer, 1000);
+                    }
+                };
+
+                this.log('Starting server...', 'info');
+                startServer();
+                
+            } catch (error) {
+                this.log('Failed to restart server: ' + error.message, 'error');
+            }
+        });
+
+        // Initialize resize handlers
+        this.initResizeHandlers();
+
+        // Sidebar toggle
+        this.toggleSidebarBtn?.addEventListener('click', () => {
+            this.toggleSidebar();
         });
     }
 
-    async checkModelStatus() {
+    async checkServerAvailability() {
         try {
-            const response = await fetch('http://localhost:11434/api/tags', {
-                signal: AbortSignal.timeout(5000)
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
+            const response = await fetch('http://localhost:11434/api/tags');
+            if (!response.ok) throw new Error('Server returned ' + response.status);
             
             const data = await response.json();
-            // Fix: Keep the full model names including tags
-            const availableModels = data.models ? data.models.map(model => model.name) : [];
+            this.serverAvailable = true;
+            this.log('Connected to Ollama server', 'success');
             
-            this.log('Available models: ' + availableModels.join(', '), 'info');
-            
-            if (availableModels.length === 0) {
-                this.updateStatus(false, 'No models found');
-                this.log('No models found. Try restarting Ollama server.', 'error');
-                return;
+            // Update model list
+            if (data.models && this.modelSelect) {
+                const availableModels = data.models.map(m => m.name);
+                Array.from(this.modelSelect.options).forEach(option => {
+                    const isAvailable = availableModels.includes(option.value);
+                    option.disabled = !isAvailable;
+                    if (!isAvailable) {
+                        option.text += ' (not installed)';
+                    }
+                });
             }
             
-            // Fix: Check for models including their tags
-            const hasDeepseekCoder = availableModels.some(model => 
-                model.startsWith('deepseek-coder'));
-            const hasDeepseekR1 = availableModels.some(model => 
-                model.startsWith('deepseek-r1'));
-            
-            // Update model select options
-            const r1Option = this.modelSelect.querySelector('option[value="deepseek-r1:7b"]');
-            if (r1Option) {
-                r1Option.disabled = !hasDeepseekR1;
-                r1Option.textContent = hasDeepseekR1 ? 'DeepSeek R1 7B' : 'DeepSeek R1 7B (Not Installed)';
-            }
-            
-            const coderOption = this.modelSelect.querySelector('option[value="deepseek-coder"]');
-            if (coderOption) {
-                coderOption.disabled = !hasDeepseekCoder;
-                coderOption.textContent = hasDeepseekCoder ? 'DeepSeek Coder' : 'DeepSeek Coder (Not Installed)';
-            }
-
-            // Fix: Check if current model is available (including any tag)
-            const isCurrentModelAvailable = availableModels.some(model => 
-                model.startsWith(this.currentModel));
-
-            if (!isCurrentModelAvailable) {
-                if (hasDeepseekCoder) {
-                    this.currentModel = 'deepseek-coder';
-                    this.modelSelect.value = 'deepseek-coder';
-                    localStorage.setItem('selectedModel', 'deepseek-coder');
-                    this.log('Switched to DeepSeek Coder as current model is not available', 'warning');
-                } else if (hasDeepseekR1) {
-                    this.currentModel = 'deepseek-r1:7b';
-                    this.modelSelect.value = 'deepseek-r1:7b';
-                    localStorage.setItem('selectedModel', 'deepseek-r1:7b');
-                    this.log('Switched to DeepSeek R1 7B as current model is not available', 'warning');
-                } else {
-                    this.updateStatus(false, 'No models available');
-                    this.log('No DeepSeek models found. Please install using: ollama pull deepseek-coder', 'error');
-                    return;
-                }
-            }
-
-            this.updateStatus(true, 'Model ready');
-            this.log(`${this.currentModel} is ready`, 'info');
-            
+            this.checkModelAvailability();
         } catch (error) {
-            let errorMessage = 'Error connecting to Ollama server';
-            if (error.name === 'TimeoutError') {
-                errorMessage = 'Connection to Ollama server timed out';
-            } else if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
-                errorMessage = 'Cannot connect to Ollama server. Is it running?';
+            this.serverAvailable = false;
+            this.log('Failed to connect to Ollama server. Is it running?', 'error');
+            this.updateModelStatus(false);
+            if (this.modelSelect) {
+                this.modelSelect.disabled = true;
             }
-            
-            this.updateStatus(false, errorMessage);
-            this.log(errorMessage + '. Try restarting the server.', 'error');
-            
-            // Disable all model options
-            this.modelSelect.querySelectorAll('option').forEach(option => {
-                option.disabled = true;
-            });
+            if (this.sendButton) {
+                this.sendButton.disabled = true;
+            }
         }
     }
 
-    async sendMessage() {
-        const prompt = this.promptInput.value.trim();
-        if (!prompt) return;
-
-        // Fix: Check if the current model is available before sending
+    async checkModelAvailability() {
         try {
             const response = await fetch('http://localhost:11434/api/tags');
+            if (!response.ok) throw new Error('Server returned ' + response.status);
+            
             const data = await response.json();
-            const availableModels = data.models.map(model => model.name);
-            
-            // Fix: Check if any version of the model is available
-            const isModelAvailable = availableModels.some(model => 
-                model.startsWith(this.currentModel));
-            
-            if (!isModelAvailable) {
-                this.log(`Model ${this.currentModel} is not available. Please install it first using: ollama pull ${this.currentModel}`, 'error');
-                return;
-            }
+            const availableModelNames = data.models.map(m => m.name);
+            const isCurrentModelAvailable = availableModelNames.includes(this.currentModel);
+
+            this.updateModelStatus(isCurrentModelAvailable);
+            this.log(`Model ${this.currentModel} is ${isCurrentModelAvailable ? 'available' : 'not available'}.`, isCurrentModelAvailable ? 'success' : 'error');
+
+            return isCurrentModelAvailable;
         } catch (error) {
-            this.log('Error checking model availability: ' + error.message, 'error');
-            return;
+            this.updateModelStatus(false);
+            this.log('Failed to check model availability: ' + error.message, 'error');
+            return false;
         }
+    }
 
-        this.addMessage(prompt, true);
-        this.promptInput.value = '';
-        this.sendButton.disabled = true;
-        this.log(`Sending prompt to ${this.currentModel}: ${prompt.slice(0, 100)}${prompt.length > 100 ? '...' : ''}`);
+    getModelDisplayName(modelValue) {
+        const modelMap = {
+            'deepseek-r1:7b': 'DeepSeek R1 7B',
+            'deepseek-coder': 'DeepSeek Coder'
+        };
+        return modelMap[modelValue] || modelValue;
+    }
 
-        try {
-            const response = await fetch('http://localhost:11434/api/generate', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    model: this.currentModel,
-                    prompt: prompt,
-                    stream: true
-                })
-            });
-
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let currentMessage = document.createElement('div');
-            currentMessage.className = 'message assistant';
-            this.messages.appendChild(currentMessage);
-            
-            let buffer = '';
-            let codeBlockBuffer = '';
-            let inCodeBlock = false;
-            let responseStartTime = Date.now();
-
-            while (true) {
-                const {done, value} = await reader.read();
-                if (done) break;
-
-                const chunk = decoder.decode(value);
-                const lines = chunk.split('\n');
-
-                for (const line of lines) {
-                    if (!line.trim()) continue;
-                    
-                    try {
-                        const data = JSON.parse(line);
-                        buffer += data.response;
-
-                        // Handle code blocks
-                        if (buffer.includes('```')) {
-                            const parts = buffer.split(/(```[^`]*```)/g);
-                            parts.forEach(part => {
-                                if (part.startsWith('```') && part.endsWith('```')) {
-                                    const code = part.slice(3, -3);
-                                    const pre = document.createElement('pre');
-                                    pre.textContent = code;
-                                    currentMessage.appendChild(pre);
-                                } else if (part.trim()) {
-                                    const text = document.createElement('p');
-                                    text.textContent = part;
-                                    currentMessage.appendChild(text);
-                                }
-                            });
-                        } else {
-                            currentMessage.textContent = buffer;
-                        }
-                        
-                        this.messages.scrollTop = this.messages.scrollHeight;
-                        
-                        // Save message to current chat
-                        if (this.currentChatId) {
-                            this.chats[this.currentChatId].messages.push({
-                                content: buffer,
-                                isUser: false,
-                                timestamp: Date.now()
-                            });
-                            this.saveChats();
-                        }
-                    } catch (e) {
-                        this.log('Error parsing response: ' + e.message, 'error');
-                    }
-                }
-            }
-
-            const responseTime = ((Date.now() - responseStartTime) / 1000).toFixed(2);
-            this.log(`Response completed in ${responseTime}s`, 'info');
-
-        } catch (error) {
-            this.log('Error sending message: ' + error.message, 'error');
-            if (error.message.includes('404')) {
-                this.addMessage(`Error: Model ${this.currentModel} is not installed. Please install it using: ollama pull ${this.currentModel}`);
-            } else {
-                this.addMessage('Error: Could not get a response from the model. Please make sure Ollama is running and the selected model is installed.');
-            }
+    updateModelStatus(available) {
+        if (this.statusDot && this.statusText) {
+            this.statusDot.style.backgroundColor = available ? 'var(--success-color)' : 'var(--danger-color)';
+            this.statusText.textContent = available ? 'All systems go! Model is ready.' : 'No model available. Please install.';
+            this.statusText.style.color = available ? 'var(--success-color)' : 'var(--danger-color)';
         }
-
-        this.sendButton.disabled = false;
+        if (this.sendButton) {
+            this.sendButton.disabled = !available;
+        }
+        if (this.promptInput) {
+            this.promptInput.disabled = !available;
+        }
     }
 
     loadChats() {
-        const savedChats = localStorage.getItem('ollama-chats');
-        return savedChats ? JSON.parse(savedChats) : {};
+        try {
+            const savedChats = localStorage.getItem('ollama-chats');
+            if (savedChats) {
+                this.chats = JSON.parse(savedChats);
+                // Load the last active chat if it exists
+                const lastActiveChat = localStorage.getItem('last-active-chat');
+                if (lastActiveChat && this.chats[lastActiveChat]) {
+                    this.switchToChat(lastActiveChat);
+                }
+            } else {
+                this.chats = {};
+            }
+        } catch (error) {
+            console.error('Error loading chats:', error);
+            this.chats = {};
+        }
     }
 
-    saveChats() {
-        localStorage.setItem('ollama-chats', JSON.stringify(this.chats));
-        localStorage.setItem('lastActiveChatId', this.currentChatId);
+    renderCurrentChat() {
+        if (!this.messages || !this.currentChatId) return;
+        
+        this.messages.innerHTML = '';
+        const chat = this.chats[this.currentChatId];
+        
+        if (!chat || !chat.messages) return;
+        
+        chat.messages.forEach(msg => {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${msg.role}`;
+            
+            // Create content div
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'content';
+            contentDiv.innerHTML = this.formatMessage(msg.content);
+            messageDiv.appendChild(contentDiv);
+            
+            // Add thinking process div for assistant messages
+            if (msg.role === 'assistant' && msg.thinking) {
+                const thinkDiv = document.createElement('div');
+                thinkDiv.className = 'think-process' + (this.showThinking ? ' visible' : '');
+                thinkDiv.textContent = msg.thinking;
+                messageDiv.insertBefore(thinkDiv, contentDiv);
+            }
+            
+            this.messages.appendChild(messageDiv);
+        });
+        
+        this.messages.scrollTop = this.messages.scrollHeight;
+    }
+
+    switchToChat(chatId) {
+        if (!this.chats[chatId]) return;
+        
+        this.currentChatId = chatId;
+        localStorage.setItem('last-active-chat', chatId);
+        
+        // Update model selector to match chat's model
+        if (this.modelSelect && this.chats[chatId].model) {
+            this.modelSelect.value = this.chats[chatId].model;
+            this.currentModel = this.chats[chatId].model;
+        }
+        
+        this.renderCurrentChat();
+        this.renderChatList();
     }
 
     createNewChat() {
@@ -376,415 +370,434 @@ class OllamaChat {
         this.chats[chatId] = {
             id: chatId,
             title: 'New Chat',
+            model: this.currentModel,
+            created: Date.now(),
             messages: []
         };
+        this.currentChatId = chatId;
+        this.renderChatList();
+        this.saveChats();
+    }
+
+    addMessage(content, isUser = false, isError = false) {
+        if (!this.currentChatId) {
+            this.createNewChat();
+        }
+
+        const chat = this.chats[this.currentChatId];
+        if (!chat.messages) {
+            chat.messages = [];
+        }
+
+        const messageObj = {
+            role: isUser ? 'user' : (isError ? 'error' : 'assistant'),
+            content: content,
+            timestamp: Date.now()
+        };
+
+        chat.messages.push(messageObj);
+        this.saveChats();
+        this.renderCurrentChat();
+    }
+
+    formatMessage(message) {
+        // Convert markdown-style code blocks
+        message = message.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
+            const language = lang || '';
+            return `<pre class="code-block ${language}"><code>${this.escapeHtml(code.trim())}</code></pre>`;
+        });
+
+        // Convert inline code
+        message = message.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+        // Convert URLs to links
+        message = message.replace(
+            /(https?:\/\/[^\s<]+[^<.,:;"')\]\s])/g, 
+            '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
+        );
+
+        // Convert bold text
+        message = message.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+
+        // Convert italic text
+        message = message.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+
+        // Convert bullet points
+        message = message.replace(/^- (.+)$/gm, '<li>$1</li>');
+        message = message.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
+
+        return message;
+    }
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    async sendMessage() {
+        if (!this.promptInput || this.isProcessing) return;
+        
+        const prompt = this.promptInput.value.trim();
+        if (!prompt) return;
+        
+        // Create new chat if needed
+        if (!this.currentChatId) {
+            this.createNewChat();
+        }
+        
+        this.isProcessing = true;
+        const originalPrompt = prompt;
+        this.promptInput.value = '';
+        
+        try {
+            // Create user message
+            const userMessageDiv = document.createElement('div');
+            userMessageDiv.className = 'message user';
+            const userContent = document.createElement('div');
+            userContent.className = 'content';
+            userContent.innerHTML = this.formatMessage(originalPrompt);
+            userMessageDiv.appendChild(userContent);
+            this.messages?.appendChild(userMessageDiv);
+            
+            // Save user message
+            this.chats[this.currentChatId].messages.push({
+                role: 'user',
+                content: originalPrompt,
+                timestamp: Date.now()
+            });
+            this.saveChats();
+            
+            // Create assistant message container
+            const assistantMessageDiv = document.createElement('div');
+            assistantMessageDiv.className = 'message assistant';
+            this.messages?.appendChild(assistantMessageDiv);
+            
+            // Add thinking process
+            const thinkDiv = document.createElement('div');
+            thinkDiv.className = 'think-process' + (this.showThinking ? ' visible' : '');
+            thinkDiv.textContent = 'Analyzing your request...';
+            assistantMessageDiv.appendChild(thinkDiv);
+            
+            // Add response container
+            const responseDiv = document.createElement('div');
+            responseDiv.className = 'content';
+            assistantMessageDiv.appendChild(responseDiv);
+            
+            // Scroll to latest message
+            this.messages.scrollTop = this.messages.scrollHeight;
+            
+            let currentThinkProcess = '';
+            let fullResponse = '';
+            let isThinkProcess = false;
+            
+            const response = await fetch('http://localhost:11434/api/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: this.currentModel,
+                    prompt: originalPrompt,
+                    stream: true
+                })
+            });
+            
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                
+                const chunk = decoder.decode(value);
+                const lines = chunk.split('\n');
+                
+                for (const line of lines) {
+                    if (!line) continue;
+                    
+                    try {
+                        const data = JSON.parse(line);
+                        
+                        if (data.response) {
+                            if (data.response.includes('<think>')) {
+                                isThinkProcess = true;
+                                currentThinkProcess = data.response.replace('<think>', '');
+                                if (thinkDiv) {
+                                    thinkDiv.textContent = currentThinkProcess;
+                                    thinkDiv.classList.toggle('visible', this.showThinking);
+                                }
+                            } else if (data.response.includes('</think>')) {
+                                isThinkProcess = false;
+                            } else if (!isThinkProcess) {
+                                fullResponse += data.response;
+                                responseDiv.innerHTML = this.formatMessage(fullResponse);
+                                this.messages.scrollTop = this.messages.scrollHeight;
+                            } else if (this.showThinking) {
+                                currentThinkProcess += data.response;
+                                if (thinkDiv) {
+                                    thinkDiv.textContent = currentThinkProcess;
+                                }
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error parsing response:', error);
+                    }
+                }
+            }
+            
+            // Save assistant message
+            if (fullResponse) {
+                this.chats[this.currentChatId].messages.push({
+                    role: 'assistant',
+                    content: fullResponse,
+                    thinking: currentThinkProcess,
+                    timestamp: Date.now()
+                });
+                this.saveChats();
+            }
+            
+        } catch (error) {
+            console.error('Error:', error);
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'message error';
+            const errorContent = document.createElement('div');
+            errorContent.className = 'content';
+            errorContent.textContent = 'An error occurred while processing your request. Please try again.';
+            errorDiv.appendChild(errorContent);
+            this.messages?.appendChild(errorDiv);
+        } finally {
+            this.isProcessing = false;
+        }
+    }
+
+    saveChats() {
+        try {
+            const chatsToSave = {};
+            // Only save necessary data and ensure proper structure
+            for (const [id, chat] of Object.entries(this.chats)) {
+                chatsToSave[id] = {
+                    id: chat.id,
+                    title: chat.title || 'New Chat',
+                    model: chat.model || this.currentModel,
+                    messages: (chat.messages || []).map(msg => ({
+                        role: msg.role,
+                        content: msg.content,
+                        thinking: msg.thinking,
+                        timestamp: msg.timestamp
+                    }))
+                };
+            }
+            localStorage.setItem('ollama-chats', JSON.stringify(chatsToSave));
+            localStorage.setItem('last-active-chat', this.currentChatId);
+        } catch (error) {
+            console.error('Error saving chats:', error);
+        }
+    }
+
+    renderChatList() {
+        if (!this.chatList) return;
+        this.chatList.innerHTML = '';
+
+        // Sort chats by creation time, most recent first
+        const sortedChatIds = Object.keys(this.chats)
+            .sort((a, b) => this.chats[b].created - this.chats[a].created);
+
+        sortedChatIds.forEach(chatId => {
+            const chat = this.chats[chatId];
+            const chatItem = document.createElement('div');
+            chatItem.className = 'chat-item';
+            chatItem.setAttribute('data-chat-id', chatId);
+            
+            // Show model information in chat title
+            const titleText = chat.title || 'Untitled Chat';
+            const modelInfo = chat.model || 'Unknown Model';
+            const createdDate = chat.created ? new Date(chat.created).toLocaleString() : 'Unknown Date';
+            
+            chatItem.innerHTML = `
+                <div class="chat-title">${titleText}</div>
+                <div class="chat-model-info">🤖 ${modelInfo}</div>
+                <div class="chat-timestamp">${createdDate}</div>
+                <button class="delete-chat-btn">🗑️</button>
+            `;
+
+            chatItem.querySelector('.delete-chat-btn')?.addEventListener('click', () => {
+                this.deleteChat(chatId);
+            });
+
+            chatItem.addEventListener('click', () => {
+                this.switchToChat(chatId);
+            });
+
+            this.chatList.appendChild(chatItem);
+        });
+    }
+
+    deleteChat(chatId) {
+        if (this.isProcessing) return;
+
+        delete this.chats[chatId];
+        if (this.currentChatId === chatId) {
+            this.currentChatId = null;
+            this.clearMessages();
+        }
         this.saveChats();
         this.renderChatList();
-        this.loadChat(chatId);
+        this.log(`Deleted chat: ${chatId}`, 'info');
     }
 
-    loadChat(chatId) {
-        this.currentChatId = chatId;
-        this.messages.innerHTML = '';
-        
-        // Update active state in sidebar
-        const chatItems = this.chatList.querySelectorAll('.chat-item');
-        chatItems.forEach(item => {
-            item.classList.toggle('active', item.dataset.chatId === chatId);
-        });
-        
-        // Load messages
-        const chat = this.chats[chatId];
-        chat.messages.forEach(msg => {
-            this.addMessage(msg.content, msg.isUser);
-        });
-    }
-
-    clearCurrentChat() {
-        if (this.currentChatId) {
-            this.chats[this.currentChatId].messages = [];
-            this.saveChats();
+    clearMessages() {
+        if (this.messages) {
             this.messages.innerHTML = '';
         }
     }
 
-    updateChatTitle() {
-        if (this.currentChatId && this.chats[this.currentChatId].messages.length > 0) {
-            const firstMessage = this.chats[this.currentChatId].messages[0].content;
-            const title = firstMessage.split('\n')[0].slice(0, 30) + (firstMessage.length > 30 ? '...' : '');
-            this.chats[this.currentChatId].title = title;
-            this.saveChats();
-            this.renderChatList();
+    log(message, level = 'info') {
+        if (!this.terminalContent) return;
+
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `log-${level}`;
+        messageDiv.textContent = `${new Date().toLocaleTimeString()} - ${message}`;
+
+        this.terminalContent.appendChild(messageDiv);
+        this.terminalContent.scrollTop = this.terminalContent.scrollHeight;
+    }
+
+    clearTerminal() {
+        if (this.terminalContent) {
+            this.terminalContent.innerHTML = '';
         }
     }
 
-    async restartServer() {
-        this.updateStatus(false, 'Restarting server...');
-        this.restartServerBtn.disabled = true;
-        this.log('Attempting to restart server...', 'warning');
-        
-        try {
-            // Try to stop the server gracefully
-            await fetch('http://localhost:11434/api/stop', {
-                method: 'POST',
-                signal: AbortSignal.timeout(5000)
-            }).catch(() => {
-                this.log('Could not stop server gracefully, might already be stopped', 'warning');
-            });
-            
-            this.log('Server stopped, please start Ollama server manually using "ollama serve"', 'info');
-            this.updateStatus(false, 'Server stopped');
-            
-            // Start checking for server availability
-            this.checkServerAvailability();
-        } catch (error) {
-            let errorMessage = 'Error restarting server';
-            if (error.name === 'TimeoutError') {
-                errorMessage = 'Timeout while stopping server';
-            }
-            this.log(errorMessage + ': ' + error.message, 'error');
-            this.updateStatus(false, errorMessage);
-        } finally {
-            this.restartServerBtn.disabled = false;
-        }
-    }
-
-    async checkServerAvailability() {
-        const maxAttempts = 10;
-        let attempts = 0;
-        
-        const checkAvailability = async () => {
-            try {
-                const response = await fetch('http://localhost:11434/api/tags');
-                if (response.ok) {
-                    this.checkModelStatus();
-                    this.restartServerBtn.disabled = false;
-                    this.log('Server is now available', 'info');
-                    return;
-                }
-            } catch (error) {
-                this.log('Server not available yet, retrying...');
-            }
-            
-            attempts++;
-            if (attempts < maxAttempts) {
-                setTimeout(checkAvailability, 2000);
-            } else {
-                this.log('Server restart failed after maximum attempts', 'error');
-                this.updateStatus(false, 'Server restart failed');
-                this.restartServerBtn.disabled = false;
-            }
-        };
-        
-        checkAvailability();
-    }
-
-    toggleSidebar() {
-        if (!this.appContainer || !this.toggleSidebarBtn) return;
-        
-        const isVisible = !this.appContainer.classList.contains('sidebar-hidden');
-        
-        if (isVisible) {
-            this.appContainer.classList.add('sidebar-hidden');
-            this.toggleSidebarBtn.innerHTML = '☰';
-            // Disable resize handle
-            if (this.sidebarResizeHandle) {
-                this.sidebarResizeHandle.style.pointerEvents = 'none';
-                this.sidebarResizeHandle.style.opacity = '0';
-            }
+    toggleTerminal() {
+        if (this.terminal.classList.contains('visible')) {
+            this.hideTerminal();
         } else {
-            this.appContainer.classList.remove('sidebar-hidden');
-            this.toggleSidebarBtn.innerHTML = '✕';
-            // Enable resize handle
-            if (this.sidebarResizeHandle) {
-                this.sidebarResizeHandle.style.pointerEvents = 'auto';
-                this.sidebarResizeHandle.style.opacity = '1';
-            }
-            // Restore saved width if exists
-            const savedWidth = localStorage.getItem('sidebarWidth');
-            if (savedWidth && this.sidebar) {
-                this.sidebar.style.width = `${savedWidth}px`;
-            }
+            this.showTerminal();
         }
-        
-        localStorage.setItem('sidebarVisible', !isVisible);
-    }
-
-    initResizeHandlers() {
-        if (this.sidebarResizeHandle && this.sidebar) {
-            this.sidebarResizeHandle.addEventListener('mousedown', (e) => {
-                if (this.appContainer.classList.contains('sidebar-hidden')) {
-                    return;
-                }
-                
-                e.preventDefault();
-                this.sidebarResizeHandle.classList.add('active');
-                document.body.style.cursor = 'col-resize';
-                
-                const startX = e.clientX;
-                const startWidth = this.sidebar.offsetWidth;
-                
-                const doDrag = (e) => {
-                    const newWidth = Math.min(Math.max(200, startWidth + e.clientX - startX), 500);
-                    this.sidebar.style.width = `${newWidth}px`;
-                    this.mainContent.style.marginLeft = `${newWidth}px`;
-                    localStorage.setItem('sidebarWidth', newWidth);
-                };
-                
-                const stopDrag = () => {
-                    document.removeEventListener('mousemove', doDrag);
-                    document.removeEventListener('mouseup', stopDrag);
-                    this.sidebarResizeHandle.classList.remove('active');
-                    document.body.style.cursor = '';
-                };
-                
-                document.addEventListener('mousemove', doDrag);
-                document.addEventListener('mouseup', stopDrag);
-            });
-        }
-        
-        if (this.terminalResizeHandle && this.terminal) {
-            this.terminalResizeHandle.addEventListener('mousedown', (e) => {
-                if (!this.terminal.classList.contains('visible')) {
-                    return;
-                }
-                
-                e.preventDefault();
-                this.terminalResizeHandle.classList.add('active');
-                document.body.style.cursor = 'row-resize';
-                
-                const startY = e.clientY;
-                const terminalRect = this.terminal.getBoundingClientRect();
-                const startHeight = terminalRect.height;
-                
-                const doDrag = (e) => {
-                    const deltaY = startY - e.clientY;
-                    const newHeight = Math.min(
-                        Math.max(100, startHeight + deltaY),
-                        window.innerHeight - 200
-                    );
-                    
-                    this.terminal.style.height = `${newHeight}px`;
-                    this.contentContainer.style.height = `calc(100vh - ${newHeight + 80}px)`;
-                    localStorage.setItem('terminalHeight', newHeight);
-                };
-                
-                const stopDrag = () => {
-                    document.removeEventListener('mousemove', doDrag);
-                    document.removeEventListener('mouseup', stopDrag);
-                    this.terminalResizeHandle.classList.remove('active');
-                    document.body.style.cursor = '';
-                };
-                
-                document.addEventListener('mousemove', doDrag);
-                document.addEventListener('mouseup', stopDrag);
-            });
-        }
+        localStorage.setItem('terminalVisible', this.terminal.classList.contains('visible'));
     }
 
     showTerminal() {
         this.terminal.classList.add('visible');
         this.contentContainer.style.height = `calc(100vh - ${this.terminal.offsetHeight + 80}px)`;
         this.toggleTerminalBtn.innerHTML = '🖥️ Hide';
-        // Enable resize handle
         if (this.terminalResizeHandle) {
             this.terminalResizeHandle.style.pointerEvents = 'auto';
             this.terminalResizeHandle.style.opacity = '1';
         }
-        this.log('Terminal shown');
     }
 
     hideTerminal() {
         this.terminal.classList.remove('visible');
         this.contentContainer.style.height = 'calc(100vh - 80px)';
         this.toggleTerminalBtn.innerHTML = '🖥️ Show';
-        // Disable resize handle
         if (this.terminalResizeHandle) {
             this.terminalResizeHandle.style.pointerEvents = 'none';
             this.terminalResizeHandle.style.opacity = '0';
         }
-        this.log('Terminal hidden');
     }
 
-    toggleTerminal() {
-        if (!this.terminal || !this.toggleTerminalBtn || !this.contentContainer) return;
+    toggleSidebar() {
+        if (!this.sidebar || !this.mainContent) return;
         
-        const isVisible = this.terminal.classList.contains('visible');
+        // Toggle classes
+        this.sidebar.classList.toggle('collapsed');
+        this.mainContent.classList.toggle('expanded');
         
-        if (isVisible) {
-            this.hideTerminal();
-        } else {
-            this.showTerminal();
-        }
+        // Store preference
+        const isCollapsed = this.sidebar.classList.contains('collapsed');
+        localStorage.setItem('sidebarCollapsed', isCollapsed);
         
-        localStorage.setItem('terminalVisible', !isVisible);
-    }
-
-    clearTerminal() {
-        if (!this.terminalContent) return;
-        this.terminalContent.innerHTML = '';
-        this.log('Terminal cleared');
-    }
-
-    log(message, type = 'info') {
-        if (!this.terminalContent) return;
-        
-        const timestamp = new Date().toLocaleTimeString();
-        const logElement = document.createElement('div');
-        logElement.className = `log ${type}`;
-        logElement.textContent = `[${timestamp}] ${message}`;
-        
-        this.terminalContent.appendChild(logElement);
-        this.terminalContent.scrollTop = this.terminalContent.scrollHeight;
-        
-        // Show terminal for important messages
-        if (type === 'error' || type === 'warning') {
-            this.showTerminal();
+        // Update button state
+        if (this.toggleSidebarBtn) {
+            this.toggleSidebarBtn.setAttribute('aria-pressed', isCollapsed);
+            this.toggleSidebarBtn.title = isCollapsed ? 'Show Sidebar' : 'Hide Sidebar';
         }
     }
 
-    exportChats() {
-        const data = {
-            version: 1,
-            timestamp: Date.now(),
-            chats: this.chats
-        };
-        
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `ollama-chats-${new Date().toISOString().split('T')[0]}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        
-        this.log('Chats exported successfully');
-    }
-
-    async importChats(event) {
-        const file = event.target.files[0];
-        if (!file) return;
-        
-        try {
-            const text = await file.text();
-            const data = JSON.parse(text);
-            
-            if (!data.version || !data.chats) {
-                throw new Error('Invalid file format');
-            }
-            
-            // Merge imported chats with existing ones
-            Object.entries(data.chats).forEach(([id, chat]) => {
-                if (!this.chats[id]) {
-                    this.chats[id] = chat;
-                }
-            });
-            
-            this.saveChats();
-            this.renderChatList();
-            this.log('Chats imported successfully');
-        } catch (error) {
-            this.log('Error importing chats: ' + error.message, 'error');
-        }
-        
-        event.target.value = ''; // Reset file input
-    }
-
-    deleteChat(chatId) {
-        if (confirm('Are you sure you want to delete this chat?')) {
-            delete this.chats[chatId];
-            this.saveChats();
-            
-            if (chatId === this.currentChatId) {
-                const remainingChats = Object.keys(this.chats);
-                if (remainingChats.length > 0) {
-                    this.loadChat(remainingChats[0]);
-                } else {
-                    this.createNewChat();
-                }
-            } else {
-                this.renderChatList();
-            }
-            
-            this.log(`Chat deleted: ${chatId}`);
-        }
-    }
-
-    renderChatList() {
-        this.chatList.innerHTML = '';
-        Object.values(this.chats).reverse().forEach(chat => {
-            const chatItem = document.createElement('div');
-            chatItem.className = 'chat-item' + (chat.id === this.currentChatId ? ' active' : '');
-            
-            const titleSpan = document.createElement('span');
-            titleSpan.textContent = chat.title || 'New Chat';
-            chatItem.appendChild(titleSpan);
-            
-            const deleteBtn = document.createElement('button');
-            deleteBtn.className = 'delete-chat';
-            deleteBtn.innerHTML = '🗑️';
-            deleteBtn.title = 'Delete Chat';
-            deleteBtn.onclick = (e) => {
-                e.stopPropagation();
-                this.deleteChat(chat.id);
-            };
-            chatItem.appendChild(deleteBtn);
-            
-            chatItem.dataset.chatId = chat.id;
-            chatItem.addEventListener('click', () => this.loadChat(chat.id));
-            this.chatList.appendChild(chatItem);
+    toggleThinkingProcess() {
+        this.showThinking = !this.showThinking;
+        localStorage.setItem('showThinking', this.showThinking);
+        document.querySelectorAll('.think-process').forEach(el => {
+            el.classList.toggle('visible', this.showThinking);
         });
     }
 
-    updateStatus(connected, message) {
-        this.statusDot.className = 'status-dot ' + (connected ? 'connected' : 'disconnected');
-        this.statusText.textContent = message;
-        this.sendButton.disabled = !connected;
+    addThinkingProcess(chatId, message) {
+        const chat = this.chats[chatId];
+        if (!chat) return;
+
+        const thinkDiv = document.createElement('div');
+        thinkDiv.className = 'think-process' + (this.showThinking ? ' visible' : '');
+        thinkDiv.textContent = message;
+        
+        const chatItem = document.querySelector(`.chat-item[data-chat-id="${chatId}"]`);
+        if (chatItem) {
+            chatItem.appendChild(thinkDiv);
+        }
     }
 
-    addMessage(content, isUser = false) {
-        const messageDiv = document.createElement('div');
-        messageDiv.className = `message ${isUser ? 'user' : 'assistant'}`;
-        
-        if (content.includes('```')) {
-            const parts = content.split(/(```[^`]*```)/g);
-            parts.forEach(part => {
-                if (part.startsWith('```') && part.endsWith('```')) {
-                    const code = part.slice(3, -3);
-                    const pre = document.createElement('pre');
-                    pre.textContent = code;
-                    messageDiv.appendChild(pre);
-                } else if (part.trim()) {
-                    const text = document.createElement('p');
-                    text.textContent = part;
-                    messageDiv.appendChild(text);
+    initResizeHandlers() {
+        if (this.sidebarResizeHandle && this.sidebar) {
+            let isResizing = false;
+            let startX;
+            let startWidth;
+
+            this.sidebarResizeHandle.addEventListener('mousedown', (e) => {
+                isResizing = true;
+                startX = e.pageX;
+                startWidth = parseInt(getComputedStyle(this.sidebar).width, 10);
+                document.body.classList.add('resizing');
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!isResizing) return;
+                
+                const width = startWidth + (e.pageX - startX);
+                if (width >= 200 && width <= 600) {  // Min and max width
+                    this.sidebar.style.width = `${width}px`;
                 }
             });
-        } else {
-            messageDiv.textContent = content;
-        }
-        
-        this.messages.appendChild(messageDiv);
-        this.messages.scrollTop = this.messages.scrollHeight;
-        
-        // Save message to current chat
-        if (this.currentChatId) {
-            this.chats[this.currentChatId].messages.push({
-                content,
-                isUser,
-                timestamp: Date.now()
+
+            document.addEventListener('mouseup', () => {
+                isResizing = false;
+                document.body.classList.remove('resizing');
             });
-            this.saveChats();
-            
-            // Update chat title if this is the first message
-            if (this.chats[this.currentChatId].messages.length === 1) {
-                this.updateChatTitle();
-            }
+        }
+
+        if (this.terminalResizeHandle && this.terminal) {
+            let isResizing = false;
+            let startY;
+            let startHeight;
+
+            this.terminalResizeHandle.addEventListener('mousedown', (e) => {
+                isResizing = true;
+                startY = e.pageY;
+                startHeight = parseInt(getComputedStyle(this.terminal).height, 10);
+                document.body.classList.add('resizing');
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!isResizing) return;
+                
+                const height = startHeight - (e.pageY - startY);
+                if (height >= 100 && height <= window.innerHeight * 0.8) {  // Min and max height
+                    this.terminal.style.height = `${height}px`;
+                }
+            });
+
+            document.addEventListener('mouseup', () => {
+                isResizing = false;
+                document.body.classList.remove('resizing');
+            });
         }
     }
 
+    saveUIState() {
+        localStorage.setItem('terminalVisible', this.terminal?.classList.contains('visible'));
+        localStorage.setItem('showThinking', this.showThinking);
+        localStorage.setItem('selectedModel', this.currentModel);
+        localStorage.setItem('theme', document.documentElement.getAttribute('data-theme'));
+    }
 }
 
 // Initialize the chat when the page loads

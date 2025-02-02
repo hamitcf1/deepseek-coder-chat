@@ -5,6 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DeepSeek-Coder Chat</title>
     <link rel="stylesheet" href="styles.css">
+    <script>
+        // Initialize theme from localStorage
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            const themeBtn = document.getElementById('theme-toggle');
+            if (themeBtn) {
+                themeBtn.textContent = savedTheme === 'light' ? '🌙' : '☀️';
+            }
+        });
+    </script>
 </head>
 <body>
     <div class="app-container">
@@ -23,15 +34,16 @@
             <div class="server-controls">
                 <div class="model-selector">
                     <select id="model-select" class="model-select">
-                        <option value="deepseek-coder">DeepSeek Coder</option>
-                        <option value="deepseek-r1:7b">DeepSeek R1 7B (Coming Soon)</option>
+                        <option value="deepseek-r1:7b">DeepSeek R1:7B</option>
+                        <option value="deepseek-coder:latest">DeepSeek Coder</option>
+                        <option value="deepseek-r1:8b">DeepSeek R1:8B</option>
                     </select>
+                    <div class="model-status">
+                        <span class="status-dot"></span>
+                    </div>
+                    <span class="status-text">Checking...</span>
                 </div>
                 <button id="restart-server" class="server-btn">Restart Server</button>
-                <div class="model-status">
-                    <span class="status-dot"></span>
-                    <span class="status-text">Checking model status...</span>
-                </div>
             </div>
         </aside>
         <div class="sidebar-resize-handle"></div>
@@ -43,6 +55,7 @@
                     <h1>DeepSeek-Coder Chat</h1>
                 </div>
                 <div class="chat-controls">
+                    <button id="toggle-thinking" class="toggle-btn" title="Toggle AI thinking process">🤔</button>
                     <button id="toggle-terminal" class="toggle-btn">🖥️ Terminal</button>
                     <button id="theme-toggle" class="theme-btn">🌙</button>
                     <button id="clear-chat" class="clear-btn">Clear Chat</button>

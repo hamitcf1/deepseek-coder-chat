@@ -31,10 +31,11 @@ This is a modern, interactive web-based chat application powered by DeepSeek-Cod
 
 2. Install Ollama:
    - Visit [Ollama.ai](https://ollama.ai/) and follow the installation instructions.
-   - Pull DeepSeek Coder models:
+   - Pull DeepSeek models:
      ```bash
-     ollama pull deepseek-coder
+     ollama pull deepseek-coder:latest
      ollama pull deepseek-r1:7b
+     ollama pull deepseek-r1:8b
      ```
 
 3. Start the Ollama server:
