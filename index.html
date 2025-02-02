@@ -6,6 +6,17 @@
     <title>DeepSeek-Coder Chat</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="icon" href="https://github.com/hamitcf1/Web2o/blob/main/my-notion-face-transparent.png?raw=true" type="image/x-icon" /> 
+    <script>
+        // Initialize theme from localStorage
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            const themeBtn = document.getElementById('theme-toggle');
+            if (themeBtn) {
+                themeBtn.textContent = savedTheme === 'light' ? '🌙' : '☀️';
+            }
+        });
+    </script>
 </head>
 <body>
     <div class="app-container">
